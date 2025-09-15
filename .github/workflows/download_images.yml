@@ -1,0 +1,66 @@
+name: Download and commit plane images
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "scripts/download_images.py"
+      - "plane-alert-*-images.csv"
+
+jobs:
+  downloadImages:
+    if: github.repository == 'sdr-enthusiasts/plane-alert-db' || ${{ vars.DOWNLOAD_IMAGES }}
+    name: Download plane images and commit to repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        
+      - name: Setup Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          
+      - name: Install dependencies
+        run: pip install -r ./scripts/requirements.txt
+
+      - name: Create plane-images directory
+        run: mkdir -p ./scripts/plane-images
+
+      - name: Download plane images
+        run: |
+          cd ./scripts
+          python download_images.py
+        env:
+          PYTHONUNBUFFERED: 1
+
+      - name: Check if images were downloaded
+        id: check_images
+        run: |
+          if [ -f "./scripts/plane-images/downloaded_images.json" ] && [ -s "./scripts/plane-images/downloaded_images.json" ]; then
+            echo "images_downloaded=true" >> "${GITHUB_OUTPUT}"
+            echo "Images were downloaded successfully"
+          else
+            echo "images_downloaded=false" >> "${GITHUB_OUTPUT}"
+            echo "No new images were downloaded"
+          fi
+
+      - name: Commit downloaded images
+        if: steps.check_images.outputs.images_downloaded == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v6.0.1
+        with:
+          commit_message: "feat: download new plane images"
+          file_pattern: "scripts/plane-images/*"
+          
+      - name: Summary
+        run: |
+          if [ "${{ steps.check_images.outputs.images_downloaded }}" == "true" ]; then
+            echo "✅ New images downloaded and committed"
+          else
+            echo "ℹ️ No new images to download"
+          fi
